@@ -1,0 +1,48 @@
+
+name: YAMLSmith CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["YAMLSmith CI Pipeline"]
+    types:
+      - completed
+
+#---------------------------------------------------------------
+# on:
+#   push:
+#    branches: ["main", "master"]
+#  pull_request:
+#    branches: ["main", "master"]
+# we wantedly skipped pull_request here as we dont want CD to genreate deployment for unmerged PR's
+# deployment gets created for every PR 
+#---------------------------------------------------------------
+
+jobs:
+  package-and-deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Bundle application files
+        run: |
+          mkdir -p release
+          zip -r release/yamlsmith-app.zip app.py requirements.txt templates/ static/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamlsmith-release-bundle
+          path: release/yamlsmith-app.zip
