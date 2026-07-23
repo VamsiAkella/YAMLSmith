@@ -1,5 +1,5 @@
 
-name: YAMLSmith CI Pipeline
+name: YAMLSmith CI Pipeline - just CI basic only
 
 on:
   push:
