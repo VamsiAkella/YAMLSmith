@@ -344,7 +344,8 @@
             <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                 <h3 class="text-white font-semibold text-sm">YAML Manifest Preview</h3>
                 <div class="flex items-center space-x-3">
-                    <button onclick="copyToClipboard()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700">Copy Code</button>
+                    <!-- Update this in your modal HTML -->
+                    <button onclick="copyToClipboard(event)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700 transition-colors">Copy Code</button>
                     <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
                 </div>
             </div>
@@ -790,9 +791,40 @@
             document.getElementById('previewModal').classList.add('hidden');
         }
 
-        function copyToClipboard() {
+
+       async function copyToClipboard(e) {
             const code = document.getElementById('yamlCode').textContent;
-            navigator.clipboard.writeText(code);
+            const btn = (e && e.currentTarget) || document.querySelector('#previewModal button[onclick*="copyToClipboard"]');
+            
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(code);
+                } else {
+                    // Fallback for non-HTTPS or legacy browser environments
+                    const textarea = document.createElement('textarea');
+                    textarea.value = code;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                }
+
+                // Visual Feedback
+                if (btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('bg-green-600', 'text-white');
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.classList.remove('bg-green-600', 'text-white');
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy code to clipboard.');
+            }
         }
 
         function showAlert(messages, colorClasses) {
@@ -801,7 +833,7 @@
             alertContainer.innerHTML = messages.map(msg => `<div>• ${msg}</div>`).join('');
             alertContainer.classList.remove('hidden');
         }
-
+        
         // --- Dynamic Actions ---
         function triggerPreview() {
             const alertContainer = document.getElementById('alertContainer');
