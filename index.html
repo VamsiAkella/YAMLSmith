@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/x-icon" href="static/YAMLSmith.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YAMLSmith - Kubernetes Manifest Generator</title>
+    <!-- Tailwind CSS for AWS-style console UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Highlight.js for Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+    <!-- JS-YAML for client-side YAML generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <!-- JSZip & FileSaver for client-side ZIP generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1e40af'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .step-card { transition: all 0.2s ease-in-out; }
+        .is-locked { opacity: 0.7; pointer-events: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-24">
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-500 p-2 rounded-lg font-bold text-xl tracking-wider">YS</div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">YAMLSmith</h1>
+                    <p class="text-xs text-slate-400">Craft Kubernetes Manifests with Confidence</p>
+                </div>
+            </div>
+            <div class="text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded-full border border-slate-700">
+                K8s Schema v1.28+
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto px-4 mt-8">
+
+        <!-- Live Warning / Validation Box -->
+        <div id="alertContainer" class="hidden mb-6 space-y-2"></div>
+
+        <form id="yamlForm" onsubmit="event.preventDefault();">
+
+            <!-- Step 1: Basic Configuration -->
+            <section class="step-card bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100">
+                    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-50 text-brand-600 font-bold text-sm">1</span>
+                    <h2 class="text-lg font-semibold text-slate-900">Basic Configuration</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                            Application Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="appName" name="appName" value="payments-api" required
+                            class="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Namespace</label>
+                        <select id="namespace" name="namespace" class="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 text-sm outline-none">
+                            <option value="default">default</option>
+                            <option value="development" selected>development</option>
+                            <option value="staging">staging</option>
+                            <option value="production">production</option>
+                        </select>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Resource Type</label>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-2" id="resourceTypeGroup">
+                            <button type="button" data-val="Deployment" class="rt-btn border-2 border-brand-500 bg-brand-50 text-brand-700 font-medium py-2 text-xs rounded-lg text-center">Deployment</button>
+                            <button type="button" data-val="StatefulSet" class="rt-btn border border-slate-200 hover:border-slate-300 py-2 text-xs rounded-lg text-center">StatefulSet</button>
+                            <button type="button" data-val="DaemonSet" class="rt-btn border border-slate-200 hover:border-slate-300 py-2 text-xs rounded-lg text-center">DaemonSet</button>
+                            <button type="button" data-val="Job" class="rt-btn border border-slate-200 hover:border-slate-300 py-2 text-xs rounded-lg text-center">Job</button>
+                            <button type="button" data-val="CronJob" class="rt-btn border border-slate-200 hover:border-slate-300 py-2 text-xs rounded-lg text-center">CronJob</button>
+                        </div>
+                        <input type="hidden" id="resourceType" name="resourceType" value="Deployment">
+                    </div>
+
+                    <!-- Container Image Section -->
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                            Container Image <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="image" name="image" value="nginx:latest" placeholder="e.g. nginx:alpine, redis:alpine, postgres:15" required
+                            class="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 text-sm outline-none">
+                    </div>
+
+                    <!-- Security Context Group -->
+                    <div class="md:col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-4 mt-1">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Security Context</h3>
+                        <label class="flex items-start space-x-3 cursor-pointer">
+                            <input type="checkbox" id="runAsNonRoot" name="runAsNonRoot" value="true" class="mt-0.5 w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <div>
+                                <span class="text-sm font-medium text-slate-800">Enforce Non-Root User</span>
+                                <span class="block text-xs text-slate-500 mt-0.5">(It is root by default until you check the box to make it Non-Root)</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: Replicas & Scaling -->
+            <section class="step-card bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100">
+                    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-50 text-brand-600 font-bold text-sm">2</span>
+                    <h2 class="text-lg font-semibold text-slate-900">Replica & Resource Sizing</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div id="replicaWrapper">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Replicas</label>
+                        <input type="number" id="replicas" name="replicas" value="2" min="1"
+                            class="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 text-sm outline-none">
+                    </div>
+
+                    <div class="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
+                        <h3 class="text-sm font-medium text-slate-800 mb-3">Resource Constraints</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-xs text-slate-500">CPU Request</label>
+                                <input type="text" id="cpuRequest" placeholder="100m" value="250m" class="w-full mt-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">Memory Request</label>
+                                <input type="text" id="memoryRequest" placeholder="128Mi" value="256Mi" class="w-full mt-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">CPU Limit</label>
+                                <input type="text" id="cpuLimit" placeholder="500m" value="500m" class="w-full mt-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">Memory Limit</label>
+                                <input type="text" id="memoryLimit" placeholder="512Mi" value="512Mi" class="w-full mt-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Networking -->
+            <section class="step-card bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100">
+                    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-50 text-brand-600 font-bold text-sm">3</span>
+                    <h2 class="text-lg font-semibold text-slate-900">Networking</h2>
+                </div>
+
+                <div class="space-y-4">
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" id="exposeService" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                        <span class="text-sm font-medium text-slate-800">Expose as Kubernetes Service</span>
+                    </label>
+
+                    <div id="serviceDetails" class="hidden pl-7 grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Service Type</label>
+                            <select id="serviceType" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                                <option value="ClusterIP">ClusterIP (Internal)</option>
+                                <option value="NodePort">NodePort</option>
+                                <option value="LoadBalancer">LoadBalancer (Cloud)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Service Port</label>
+                            <input type="number" id="servicePort" value="80" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Target Container Port</label>
+                            <input type="number" id="targetPort" value="8080" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-100 pt-3">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="enableIngress" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <span class="text-sm font-medium text-slate-800">Enable Ingress Routing</span>
+                        </label>
+
+                        <div id="ingressDetails" class="hidden pl-7 pt-3">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Hostname Rule</label>
+                            <input type="text" id="ingressHost" placeholder="api.example.com" class="w-full md:w-1/2 px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: Storage -->
+            <section class="step-card bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100">
+                    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-50 text-brand-600 font-bold text-sm">4</span>
+                    <h2 class="text-lg font-semibold text-slate-900">Storage Configuration</h2>
+                </div>
+
+                <div>
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" id="enableStorage" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                        <span class="text-sm font-medium text-slate-800">Attach Persistent Storage (PVC)</span>
+                    </label>
+                    <p id="storageLockNote" class="text-xs text-amber-600 mt-1 hidden">⚠️ StatefulSets strictly mandate Persistent Storage.</p>
+
+                    <div id="storageDetails" class="hidden pl-7 grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Storage Size</label>
+                            <input type="text" id="storageSize" value="10Gi" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Storage Class</label>
+                            <select id="storageClass" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                                <option value="standard">standard</option>
+                                <option value="fast">fast-ssd</option>
+                                <option value="gp2">gp2 (AWS)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Mount Path</label>
+                            <input type="text" id="mountPath" value="/data" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 5: Advanced Options -->
+            <section class="step-card bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100">
+                    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-50 text-brand-600 font-bold text-sm">5</span>
+                    <h2 class="text-lg font-semibold text-slate-900">Advanced Settings</h2>
+                </div>
+
+                <div class="space-y-6">
+                    <!-- HPA -->
+                    <div>
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="enableAutoscaling" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <span class="text-sm font-medium text-slate-800">Autoscaling (HPA)</span>
+                        </label>
+                        <div id="hpaDetails" class="hidden pl-7 grid grid-cols-3 gap-4 pt-3">
+                            <div>
+                                <label class="block text-xs text-slate-500">Min Replicas</label>
+                                <input type="number" id="minReplicas" value="2" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500">Max Replicas</label>
+                                <input type="number" id="maxReplicas" value="10" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500">Target CPU %</label>
+                                <input type="number" id="cpuTarget" value="80" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ConfigMap -->
+                    <div class="border-t border-slate-100 pt-4">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="enableConfigMap" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <span class="text-sm font-medium text-slate-800">ConfigMap Parameters</span>
+                        </label>
+                        <div id="cmDetails" class="hidden pl-7 pt-3 space-y-2">
+                            <div id="cmContainer" class="space-y-2"></div>
+                            <button type="button" onclick="addKvPair('cmContainer')" class="text-xs text-brand-600 hover:underline font-medium">+ Add Key-Value</button>
+                        </div>
+                    </div>
+
+                    <!-- Secrets -->
+                    <div class="border-t border-slate-100 pt-4">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="enableSecret" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <span class="text-sm font-medium text-slate-800">Secrets (Env Variables)</span>
+                        </label>
+                        <div id="secretDetails" class="hidden pl-7 pt-3 space-y-2">
+                            <div id="secretContainer" class="space-y-2"></div>
+                            <button type="button" onclick="addKvPair('secretContainer', true)" class="text-xs text-brand-600 hover:underline font-medium">+ Add Secret Key-Value</button>
+                        </div>
+                    </div>
+
+                    <!-- Health Probes -->
+                    <div class="border-t border-slate-100 pt-4">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="enableProbes" class="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500">
+                            <span class="text-sm font-medium text-slate-800">Health Probes</span>
+                        </label>
+                        <div id="probeDetails" class="hidden pl-7 grid grid-cols-2 gap-4 pt-3">
+                            <div>
+                                <label class="block text-xs text-slate-500">Liveness Path</label>
+                                <input type="text" id="livenessPath" value="/health" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500">Readiness Path</label>
+                                <input type="text" id="readinessPath" value="/ready" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </form>
+    </main>
+
+    <!-- Sticky Bottom Control Panel -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div>
+                <span class="text-xs text-slate-500 block">Manifest Summary</span>
+                <span id="summaryText" class="text-xs font-semibold text-slate-800">1 Manifest to be generated</span>
+            </div>
+            <div class="flex space-x-3">
+                <button type="button" onclick="triggerPreview()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm rounded-lg border border-slate-300">
+                    Preview Manifests
+                </button>
+                <button type="button" onclick="triggerDownload()" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-medium text-sm rounded-lg shadow-sm">
+                    Generate ZIP Bundle
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- YAML Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                <h3 class="text-white font-semibold text-sm">YAML Manifest Preview</h3>
+                <div class="flex items-center space-x-3">
+                    <button onclick="copyToClipboard()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700">Copy Code</button>
+                    <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <pre><code id="yamlCode" class="language-yaml text-xs rounded-lg"></code></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pure Client JavaScript Engine -->
+    <script>
+        // --- Core K8s Logic Engine (Replaces Python Engine) ---
+        function dumpYaml(obj) {
+            return jsyaml.dump(obj, { lineWidth: -1, noRefs: true, sortKeys: false });
+        }
+
+        function validateInputs(data) {
+            const errors = [];
+            if (!data.appName) errors.push("Application Name is required.");
+            if (!data.image) errors.push("Container Image is required.");
+            if (data.resourceType === "StatefulSet" && !data.enableStorage) {
+                errors.push("StatefulSet requires Persistent Storage to be enabled.");
+            }
+            if (data.enableIngress && !data.exposeService) {
+                errors.push("Enable Ingress requires 'Expose as Service' to be enabled.");
+            }
+            if (data.enableAutoscaling) {
+                if (!data.cpuLimit || !data.memoryLimit) {
+                    errors.push("Autoscaling (HPA) requires CPU and Memory limits to be set.");
+                }
+            }
+            return errors;
+        }
+
+        function buildManifests(data) {
+            const manifests = [];
+            const warnings = [];
+
+            const appName = (data.appName || "my-app").trim().toLowerCase();
+            const namespace = (data.namespace || "default").trim().toLowerCase();
+            const resourceType = data.resourceType || "Deployment";
+            const image = (data.image || "").trim();
+            const replicas = parseInt(data.replicas || 1, 10);
+
+            let enableStorage = Boolean(data.enableStorage);
+            let enableProbes = Boolean(data.enableProbes);
+
+            // Heuristics
+            if (image.toLowerCase().includes("postgres") && !enableStorage) {
+                enableStorage = true;
+                warnings.push("Auto-enabled Persistent Storage for PostgreSQL image to prevent data loss.");
+            }
+            if (image.toLowerCase().includes("redis") && !enableProbes) {
+                enableProbes = true;
+                warnings.push("Auto-enabled Health Probes for Redis workload.");
+            }
+            if (namespace === "production" && replicas < 2 && ["Deployment", "StatefulSet"].includes(resourceType)) {
+                warnings.push("Production workloads should run at least 2 replicas for High Availability.");
+            }
+            if (!data.cpuLimit || !data.memoryLimit) {
+                warnings.push("Missing resource limits can cause noisy-neighbor issues on K8s nodes.");
+            }
+
+            const labels = {
+                "app": appName,
+                "app.kubernetes.io/name": appName,
+                "app.kubernetes.io/instance": `${appName}-${namespace}`
+            };
+
+            // 1. Namespace
+            if (namespace !== "default") {
+                manifests.push({
+                    filename: "00-namespace.yaml",
+                    content: `# Created to isolate ${appName} within the ${namespace} environment\n` + dumpYaml({
+                        apiVersion: "v1",
+                        kind: "Namespace",
+                        metadata: { name: namespace, labels: labels }
+                    })
+                });
+            }
+
+            // 2. ConfigMap
+            if (data.enableConfigMap && Object.keys(data.configMapData || {}).length > 0) {
+                manifests.push({
+                    filename: "01-configmap.yaml",
+                    content: "# Non-sensitive configuration key-value pairs\n" + dumpYaml({
+                        apiVersion: "v1",
+                        kind: "ConfigMap",
+                        metadata: { name: `${appName}-config`, namespace: namespace, labels: labels },
+                        data: data.configMapData
+                    })
+                });
+            }
+
+            // 3. Secret
+            if (data.enableSecret && Object.keys(data.secretData || {}).length > 0) {
+                manifests.push({
+                    filename: "02-secret.yaml",
+                    content: "# Sensitive string parameters automatically populated via K8s stringData\n" + dumpYaml({
+                        apiVersion: "v1",
+                        kind: "Secret",
+                        metadata: { name: `${appName}-secret`, namespace: namespace, labels: labels },
+                        type: "Opaque",
+                        stringData: data.secretData
+                    })
+                });
+            }
+
+            // 4. PVC
+            const pvcName = `${appName}-pvc`;
+            if (enableStorage && resourceType !== "StatefulSet") {
+                const pvcDict = {
+                    apiVersion: "v1",
+                    kind: "PersistentVolumeClaim",
+                    metadata: { name: pvcName, namespace: namespace, labels: labels },
+                    spec: {
+                        accessModes: ["ReadWriteOnce"],
+                        resources: { requests: { storage: data.storageSize || "10Gi" } }
+                    }
+                };
+                if (data.storageClass) pvcDict.spec.storageClassName = data.storageClass;
+                manifests.push({
+                    filename: "03-pvc.yaml",
+                    content: "# Durable block or network storage claim\n" + dumpYaml(pvcDict)
+                });
+            }
+
+            // 5. Core Workload
+            const containerSpec = { name: appName, image: image };
+            if (data.exposeService) containerSpec.ports = [{ containerPort: parseInt(data.targetPort || 8080, 10) }];
+
+            const envFrom = [];
+            if (data.enableConfigMap && Object.keys(data.configMapData || {}).length > 0) {
+                envFrom.push({ configMapRef: { name: `${appName}-config` } });
+            }
+            if (data.enableSecret && Object.keys(data.secretData || {}).length > 0) {
+                envFrom.push({ secretRef: { name: `${appName}-secret` } });
+            }
+            if (envFrom.length > 0) containerSpec.envFrom = envFrom;
+
+            const resources = {};
+            if (data.cpuRequest || data.memoryRequest) {
+                resources.requests = {};
+                if (data.cpuRequest) resources.requests.cpu = data.cpuRequest;
+                if (data.memoryRequest) resources.requests.memory = data.memoryRequest;
+            }
+            if (data.cpuLimit || data.memoryLimit) {
+                resources.limits = {};
+                if (data.cpuLimit) resources.limits.cpu = data.cpuLimit;
+                if (data.memoryLimit) resources.limits.memory = data.memoryLimit;
+            }
+            if (Object.keys(resources).length > 0) containerSpec.resources = resources;
+
+            if (enableProbes) {
+                const targetPortNum = parseInt(data.targetPort || 8080, 10);
+                if (data.livenessPath) {
+                    containerSpec.livenessProbe = {
+                        httpGet: { path: data.livenessPath, port: targetPortNum },
+                        initialDelaySeconds: 15, periodSeconds: 20
+                    };
+                }
+                if (data.readinessPath) {
+                    containerSpec.readinessProbe = {
+                        httpGet: { path: data.readinessPath, port: targetPortNum },
+                        initialDelaySeconds: 5, periodSeconds: 10
+                    };
+                }
+            }
+
+            const volumes = [];
+            if (enableStorage) {
+                containerSpec.volumeMounts = [{ name: "data-volume", mountPath: data.mountPath || "/data" }];
+                if (resourceType !== "StatefulSet") {
+                    volumes.push({ name: "data-volume", persistentVolumeClaim: { claimName: pvcName } });
+                }
+            }
+
+            const podSpec = { containers: [containerSpec] };
+            if (data.runAsNonRoot) podSpec.securityContext = { runAsNonRoot: true, runAsUser: 10001 };
+            if (volumes.length > 0) podSpec.volumes = volumes;
+
+            let apiVersion = "apps/v1";
+            if (["Job", "CronJob"].includes(resourceType)) apiVersion = "batch/v1";
+
+            const workloadDict = {
+                apiVersion: apiVersion,
+                kind: resourceType,
+                metadata: { name: appName, namespace: namespace, labels: labels }
+            };
+
+            if (["Deployment", "StatefulSet", "DaemonSet"].includes(resourceType)) {
+                workloadDict.spec = {
+                    selector: { matchLabels: { app: appName } },
+                    template: { metadata: { labels: { app: appName } }, spec: podSpec }
+                };
+                if (resourceType !== "DaemonSet") workloadDict.spec.replicas = replicas;
+                if (resourceType === "StatefulSet" && enableStorage) {
+                    const vct = {
+                        metadata: { name: "data-volume" },
+                        spec: {
+                            accessModes: ["ReadWriteOnce"],
+                            resources: { requests: { storage: data.storageSize || "10Gi" } }
+                        }
+                    };
+                    if (data.storageClass) vct.spec.storageClassName = data.storageClass;
+                    workloadDict.spec.volumeClaimTemplates = [vct];
+                }
+            } else if (resourceType === "Job") {
+                workloadDict.spec = {
+                    template: { metadata: { labels: { app: appName } }, spec: { ...podSpec, restartPolicy: "OnFailure" } }
+                };
+            } else if (resourceType === "CronJob") {
+                workloadDict.spec = {
+                    schedule: "0 * * * *",
+                    jobTemplate: {
+                        spec: {
+                            template: { metadata: { labels: { app: appName } }, spec: { ...podSpec, restartPolicy: "OnFailure" } }
+                        }
+                    }
+                };
+            }
+
+            manifests.push({
+                filename: `04-${resourceType.toLowerCase()}.yaml`,
+                content: `# Core ${resourceType} Workload Definition\n` + dumpYaml(workloadDict)
+            });
+
+            // 6. Service
+            if (data.exposeService) {
+                manifests.push({
+                    filename: "05-service.yaml",
+                    content: `# Exposes ${appName} inside/outside the cluster\n` + dumpYaml({
+                        apiVersion: "v1",
+                        kind: "Service",
+                        metadata: { name: `${appName}-service`, namespace: namespace, labels: labels },
+                        spec: {
+                            type: data.serviceType || "ClusterIP",
+                            selector: { app: appName },
+                            ports: [{
+                                protocol: "TCP",
+                                port: parseInt(data.servicePort || 80, 10),
+                                targetPort: parseInt(data.targetPort || 8080, 10)
+                            }]
+                        }
+                    })
+                });
+            }
+
+            // 7. Ingress
+            if (data.enableIngress && data.exposeService) {
+                manifests.push({
+                    filename: "06-ingress.yaml",
+                    content: "# Layer 7 Routing for HTTP/HTTPS Traffic\n" + dumpYaml({
+                        apiVersion: "networking.k8s.io/v1",
+                        kind: "Ingress",
+                        metadata: { name: `${appName}-ingress`, namespace: namespace, labels: labels },
+                        spec: {
+                            rules: [{
+                                host: data.ingressHost ? data.ingressHost.trim() : `${appName}.local`,
+                                http: {
+                                    paths: [{
+                                        path: "/",
+                                        pathType: "Prefix",
+                                        backend: {
+                                            service: {
+                                                name: `${appName}-service`,
+                                                port: { number: parseInt(data.servicePort || 80, 10) }
+                                            }
+                                        }
+                                    }]
+                                }
+                            }]
+                        }
+                    })
+                });
+            }
+
+            // 8. HPA
+            if (data.enableAutoscaling && ["Deployment", "StatefulSet"].includes(resourceType)) {
+                manifests.push({
+                    filename: "07-hpa.yaml",
+                    content: "# Dynamic horizontal pod autoscaler based on CPU consumption\n" + dumpYaml({
+                        apiVersion: "autoscaling/v2",
+                        kind: "HorizontalPodAutoscaler",
+                        metadata: { name: `${appName}-hpa`, namespace: namespace, labels: labels },
+                        spec: {
+                            scaleTargetRef: { apiVersion: "apps/v1", kind: resourceType, name: appName },
+                            minReplicas: parseInt(data.minReplicas || 2, 10),
+                            maxReplicas: parseInt(data.maxReplicas || 10, 10),
+                            metrics: [{
+                                type: "Resource",
+                                resource: {
+                                    name: "cpu",
+                                    target: { type: "Utilization", averageUtilization: parseInt(data.cpuTarget || 80, 10) }
+                                }
+                            }]
+                        }
+                    })
+                });
+            }
+
+            return { manifests, warnings };
+        }
+
+        // --- UI Dynamic Event Bindings ---
+        function addKvPair(containerId, isMasked = false) {
+            const container = document.getElementById(containerId);
+            const row = document.createElement('div');
+            row.className = "flex items-center space-x-2 kv-row";
+            row.innerHTML = `
+                <input type="text" placeholder="Key" class="kv-key w-1/3 px-3 py-1 text-xs border border-slate-300 rounded-lg">
+                <input type="${isMasked ? 'password' : 'text'}" placeholder="Value" class="kv-val w-1/2 px-3 py-1 text-xs border border-slate-300 rounded-lg">
+                <button type="button" onclick="this.parentElement.remove(); updateSummary();" class="text-red-500 font-bold px-2 text-sm">&times;</button>
+            `;
+            container.appendChild(row);
+        }
+
+        document.getElementById('image').addEventListener('input', (e) => {
+            const val = e.target.value.toLowerCase();
+            if (val.includes('postgres')) {
+                document.getElementById('enableStorage').checked = true;
+                toggleVisibility('enableStorage', 'storageDetails');
+            }
+            if (val.includes('redis')) {
+                document.getElementById('enableProbes').checked = true;
+                toggleVisibility('enableProbes', 'probeDetails');
+            }
+            updateSummary();
+        });
+
+        document.querySelectorAll('.rt-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.rt-btn').forEach(b => {
+                    b.className = "rt-btn border border-slate-200 hover:border-slate-300 py-2 text-xs rounded-lg text-center";
+                });
+                this.className = "rt-btn border-2 border-brand-500 bg-brand-50 text-brand-700 font-medium py-2 text-xs rounded-lg text-center";
+                
+                const val = this.getAttribute('data-val');
+                document.getElementById('resourceType').value = val;
+
+                const storageCheckbox = document.getElementById('enableStorage');
+                const lockNote = document.getElementById('storageLockNote');
+                if (val === 'StatefulSet') {
+                    storageCheckbox.checked = true;
+                    storageCheckbox.disabled = true;
+                    lockNote.classList.remove('hidden');
+                } else {
+                    storageCheckbox.disabled = false;
+                    lockNote.classList.add('hidden');
+                }
+
+                document.getElementById('replicaWrapper').style.display = ['DaemonSet', 'Job', 'CronJob'].includes(val) ? 'none' : 'block';
+                toggleVisibility('enableStorage', 'storageDetails');
+                updateSummary();
+            });
+        });
+
+        function bindToggle(checkId, targetId) {
+            document.getElementById(checkId).addEventListener('change', () => {
+                toggleVisibility(checkId, targetId);
+                if(checkId === 'enableIngress' && document.getElementById('enableIngress').checked) {
+                    document.getElementById('exposeService').checked = true;
+                    toggleVisibility('exposeService', 'serviceDetails');
+                }
+                updateSummary();
+            });
+        }
+
+        function toggleVisibility(checkId, targetId) {
+            const chk = document.getElementById(checkId);
+            const target = document.getElementById(targetId);
+            chk.checked ? target.classList.remove('hidden') : target.classList.add('hidden');
+        }
+
+        bindToggle('exposeService', 'serviceDetails');
+        bindToggle('enableIngress', 'ingressDetails');
+        bindToggle('enableStorage', 'storageDetails');
+        bindToggle('enableAutoscaling', 'hpaDetails');
+        bindToggle('enableConfigMap', 'cmDetails');
+        bindToggle('enableSecret', 'secretDetails');
+        bindToggle('enableProbes', 'probeDetails');
+
+        function getFormData() {
+            const getKv = (containerId) => {
+                const result = {};
+                document.querySelectorAll(`#${containerId} .kv-row`).forEach(row => {
+                    const k = row.querySelector('.kv-key').value.trim();
+                    const v = row.querySelector('.kv-val').value.trim();
+                    if (k) result[k] = v;
+                });
+                return result;
+            };
+
+            return {
+                appName: document.getElementById('appName').value,
+                namespace: document.getElementById('namespace').value,
+                resourceType: document.getElementById('resourceType').value,
+                image: document.getElementById('image').value,
+                runAsNonRoot: document.getElementById('runAsNonRoot').checked,
+                replicas: document.getElementById('replicas').value,
+                exposeService: document.getElementById('exposeService').checked,
+                serviceType: document.getElementById('serviceType').value,
+                servicePort: document.getElementById('servicePort').value,
+                targetPort: document.getElementById('targetPort').value,
+                enableIngress: document.getElementById('enableIngress').checked,
+                ingressHost: document.getElementById('ingressHost').value,
+                enableAutoscaling: document.getElementById('enableAutoscaling').checked,
+                minReplicas: document.getElementById('minReplicas').value,
+                maxReplicas: document.getElementById('maxReplicas').value,
+                cpuTarget: document.getElementById('cpuTarget').value,
+                enableStorage: document.getElementById('enableStorage').checked,
+                storageSize: document.getElementById('storageSize').value,
+                storageClass: document.getElementById('storageClass').value,
+                mountPath: document.getElementById('mountPath').value,
+                enableConfigMap: document.getElementById('enableConfigMap').checked,
+                configMapData: getKv('cmContainer'),
+                enableSecret: document.getElementById('enableSecret').checked,
+                secretData: getKv('secretContainer'),
+                enableProbes: document.getElementById('enableProbes').checked,
+                livenessPath: document.getElementById('livenessPath').value,
+                readinessPath: document.getElementById('readinessPath').value,
+                cpuRequest: document.getElementById('cpuRequest').value,
+                memoryRequest: document.getElementById('memoryRequest').value,
+                cpuLimit: document.getElementById('cpuLimit').value,
+                memoryLimit: document.getElementById('memoryLimit').value,
+            };
+        }
+
+        function updateSummary() {
+            let count = 1;
+            if (document.getElementById('namespace').value !== 'default') count++;
+            if (document.getElementById('exposeService').checked) count++;
+            if (document.getElementById('enableIngress').checked) count++;
+            if (document.getElementById('enableStorage').checked) count++;
+            if (document.getElementById('enableAutoscaling').checked) count++;
+            if (document.getElementById('enableConfigMap').checked) count++;
+            if (document.getElementById('enableSecret').checked) count++;
+
+            document.getElementById('summaryText').innerText = `${count} Kubernetes Manifests will be created`;
+        }
+
+        function closeModal() {
+            document.getElementById('previewModal').classList.add('hidden');
+        }
+
+        function copyToClipboard() {
+            const code = document.getElementById('yamlCode').textContent;
+            navigator.clipboard.writeText(code);
+        }
+
+        function showAlert(messages, colorClasses) {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.className = `p-4 rounded-lg border text-xs space-y-1 ${colorClasses}`;
+            alertContainer.innerHTML = messages.map(msg => `<div>• ${msg}</div>`).join('');
+            alertContainer.classList.remove('hidden');
+        }
+
+        // --- Dynamic Actions ---
+        function triggerPreview() {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.classList.add('hidden');
+            alertContainer.innerHTML = '';
+
+            const formData = getFormData();
+            const errors = validateInputs(formData);
+
+            if (errors.length > 0) {
+                showAlert(errors, 'bg-red-50 text-red-700 border-red-200');
+                return;
+            }
+
+            const { manifests, warnings } = buildManifests(formData);
+
+            if (warnings.length > 0) {
+                showAlert(warnings, 'bg-amber-50 text-amber-700 border-amber-200');
+            }
+
+            const combinedYaml = manifests.map(m => m.content).join("\n---\n");
+            const codeBlock = document.getElementById('yamlCode');
+            codeBlock.textContent = combinedYaml;
+            hljs.highlightElement(codeBlock);
+            document.getElementById('previewModal').classList.remove('hidden');
+        }
+
+        async function triggerDownload() {
+            const formData = getFormData();
+            const errors = validateInputs(formData);
+
+            if (errors.length > 0) {
+                showAlert(errors, 'bg-red-50 text-red-700 border-red-200');
+                return;
+            }
+
+            const { manifests } = buildManifests(formData);
+            const appName = (formData.appName || "k8s-manifests").trim().toLowerCase();
+
+            const zip = new JSZip();
+            const folder = zip.folder(appName);
+
+            manifests.forEach(m => {
+                folder.file(m.filename, m.content);
+            });
+
+            const content = await zip.generateAsync({ type: "blob" });
+            saveAs(content, `${appName}-manifests.zip`);
+        }
+    </script>
+</body>
+</html>
